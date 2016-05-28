@@ -1,4 +1,4 @@
-function [ PVs ] = make_PVs(interval_data, res, sig, bump_func_params, type)
+function [ PVs ] = make_PVs(interval_data, res, sig, weight_func,params,type)
 %make_PIs generates the set of persistence vectors for the PH interval data
 %stored in the cell array titled interval_data. In the special case that
 %all birth times for H0 features is equal to zero, the persistence image is
@@ -16,11 +16,14 @@ function [ PVs ] = make_PVs(interval_data, res, sig, bump_func_params, type)
 %            discritization
 %            -sig: is the desired variance of the Gaussians used to compute
 %            the images
-%            bump_func_params: a 1x2 matrix containing the values of the
-%            bump function parameters [M1,M2]. M1 controls how quickly the
-%            wieghting function leaves 0 and the M2 controls how quickly
-%            the function levels off to 1.
-%            -type: refers to the declaration of a soft' or 'hard' with
+%            -weight_function: the name of the weighting function to be
+%            called to generate the weightings for the bars. ex
+%            @linear_ramp. The weight function needs to be a function only
+%            of persistence. Needs to be able to accept the
+%            birth_persistence coordinates as an input.
+%            -params: the set of parameter values needing to be defined fpr
+%            the weighting function. 
+%                   -type: refers to the declaration of a soft' or 'hard' with
 %            respect to the boundaries. type=1 produces hard bounds, type=2
 %            produces soft boundaries on the vectors.
 %OUTPUTS:   -PIs: The set of persistence vectors generated based on the
@@ -34,42 +37,51 @@ elseif size(problems,1)==0;
     'All positive Persistence, continuing'
 end
 
-if nargin>5
+if nargin>6
     error('Error: too many input arguments')
+elseif nargin==6
+    res=res;
+    sig=sig;
+    weight_func=weight_func;
+    params=params;
+    type=type;
 elseif nargin==5
     res=res;
     sig=sig;
-    bump_func_params=bump_func_params;
-    type=type;
+    weight_func=weight_func;
+    params=params;
+    type=1;
 elseif nargin==4
-    res=res;
-    sig=sig;
-    bump_func_params=bump_func_params;
-    type=1; %default boundary setting is hard.
+    error('Error: Incomplete weight function and parameter pair');
 elseif nargin==3 
     res=res;
     sig=sig;
-    bump_func_params=[0,0]; %default setting is a linear bump function.
+    weight_func=@linear_ramp; %default setting is a linear weighting function
+    params=[0, max(max(max_b_p_H0(:,2)))]; %default setting 0 at 0 and 1 at 
+    %the maximum persistence.
     type=1; %the default boundary setting is hard
 elseif nargin==2
     res=res;
     sig=.5*(max(max(max_b_p_H0(:,2)))/res);%the default setting for the 
     %variance of the gaussians is equal to one half the height of a pixel.
-    bump_func_params=[0,0]; %default setting is a linear bump function
+    weight_func=@linear_ramp; %default setting is a linear weighting function
+    params=[0, max(max(max_b_p_H0(:,2)))]; %default setting 0 at 0 and 1 at 
+    %the maximum persistence.
     type=1; %the default boundary setting is hard.
 elseif nargin==1
     res=25; %default resolution is equal to 25 pixels.
     sig=.5*(max(max(max_b_p_H0(:,2)))/res);%the default setting for the 
     %variance of the gaussians is equal to one half the height of a pixel.
-    bump_func_params=[0,0]; %default setting is a linear bump function
+    weight_func=@linear_ramp; %default setting is a linear weighting function
+    params=[0, max(max(max_b_p_H0(:,2)))]; %default setting 0 at 0 and 1 at 
+    %the maximum persistence.
     type=1; %the default boundary setting is hard.
 end
     
-    
 if type==1       
-    [ data_images ] = hard_bound_PVs( b_p_data, max_b_p_H0, bump_func_params, res,sig);
+    [ data_images ] = hard_bound_PVs( b_p_data, max_b_p_H0, weight_func, params, res,sig);
 elseif type==2
-    [ data_images ] = soft_bound_PVs( b_p_data, max_b_p_H0, bump_func_params, res,sig);
+    [ data_images ] = soft_bound_PVs( b_p_data, max_b_p_H0, weight_func, params, res,sig);
 end
     PVs=data_images;
     
@@ -130,80 +142,8 @@ max_b_p_H0=[H0_max_birth, H0_max_persistence];
 b_p_data=birth_persistence;
 
 end
-function [lin_interp_vals] = approx_bump(X,min,max,varargin)
-%approx_bump takes in a vector of values and approximates the bump function
-%at these values. This can then be used to generate linear approximation at
-%a novel point
-lin_interp_vals=zeros(length(X),2);
-% Check for threshold parameter
-if size(varargin) == 0
-    M = [1,1];
-else
-    M = varargin{1};
-end
 
-for i=1:length(X)
-    lin_interp_vals(i,1)=X(i);
-    lin_interp_vals(i,2)=bump(X(i), min, max, M);
-end
-    
-end
-function [b] = bump(radius, minradius, maxradius, varargin)
-% bump2 determines the approximate value at radius of a smooth, 
-% rotationally-invariant bump function h(x) with the properties:
-% 
-%   1.) h(z) = 1 if |z| <= minradius
-%   2.) 0 < h(z) < 1 if minradius < |z| < maxradius 
-%   3.) h(z) = 0 if maxradius < |z|
-
-if radius > maxradius
-   b = 0; 
-   return;
-end
-
-% Check for threshold parameter
-if size(varargin) == 0
-    M = [1,1];
-else
-    M = varargin{1};
-end
-
-% Parameter to control error approximation.
-resolution = 10000;
-
-x = linspace(minradius, maxradius, resolution);
-g = zeros(1,resolution);
-
-for i=1:resolution
-    g(i) = f(x(i)-minradius, M(1))*f(maxradius-x(i), M(2));
-end
-
-b = h(x,g,radius);
-
-% ================
-% Local functions
-% ================
-% Smoothly varying, monotonic function whose range is [0,1).
-function y = f(x,M)
-    if x > 0
-        y = exp(-M/x);
-    else
-        y = 0;
-    end
-end
-
-% Integral function h(x) = int_{-inf}^{radius} g(x) / int_{-inf}^{inf} g(x)
-function z = h(x,g,radius)
-    [~,idx] = min(abs(x-radius));
-    if idx < 2
-        z = 0;
-    else
-        z = trapz(x(1:idx),g(1:idx))/trapz(x,g);
-    end
-end
-
-end
-function [ data_vecs ] = hard_bound_PVs( b_p_data, max_b_p_H0, bump_func_params, res,sig)
+function [ data_vecs ] = hard_bound_PVs( b_p_data, max_b_p_H0, weight_func, params, res,sig)
 %hard_bound_PIs generates the PIs for a set of point clouds with the
 %b_p_data. Hard refers to the fact that we cut the boundaries off hard at
 %the maximum values. 
@@ -213,11 +153,9 @@ function [ data_vecs ] = hard_bound_PVs( b_p_data, max_b_p_H0, bump_func_params,
 %                  birth time across all point clouds for H0. 
 %                  This information is used to create the boundaries for 
 %                  the persistence vectors.
-%                  -bump_func_params: give the values for the
-%                  bump function parameters which determine how fast the
-%                  function leaves zero and how quickly it levels off at
-%                  1. [M1,M2] where M1 controls the speed of leaving zero
-%                  and M2 controls the speed of leveling off.
+%                  -weight_func: the weighting function the user specified
+%                  -params: the needed paramteres for the user specified
+%                  weight function
 %                  -res: the resolution (number of pixels).
 %                  -sig: the variance of the gaussians. 
 %   OUTPUT:        -data_images: the set of persistence vectors generated
@@ -226,28 +164,26 @@ function [ data_vecs ] = hard_bound_PVs( b_p_data, max_b_p_H0, bump_func_params,
 [m,n]=size(b_p_data);
 %allocate space
 data_vecs=cell(m,n);
-H0_max_p=max_b_p_H0(1,2);    
-%select 100 sample values of the bump function to linearly interpolate
-%between to get scaling factors. For now, no matter what the range we only
-%compute the value at 100 points.
-X_H0=linspace(0,H0_max_p,100);    
-%compute the bump function values at the test points. 
-[lin_interp_vals_H0] = approx_bump(X_H0,0,H0_max_p,[0,0]);     
+H0_max_p=max_b_p_H0(1,2);        
 %set up discritization for H0
 persistence_stepsize_H0=H0_max_p/res; %the y-height of a pixel
 grid_values1_H0=0:persistence_stepsize_H0:H0_max_p; %must be increasing from zero to max_persistence
             for p=1:m
                 for t=1:n
-                H0=b_p_data{p,t}; %H0 interval data
-                H0=H0(:,2); %we only need the persistence values
-                %call the function that generates the image
-                [I_H0] = one_dim_gaussian_bump(H0, grid_values1_H0, sig, lin_interp_vals_H0);  
+                H0_both=b_p_data{p,t}; %H0 interval data
+                H0=H0_both(:,2); %we only need the persistence values
+                %COULD CHANGE TO BE IN TERMS OF DEATH INSTEAD OF
+                %PERSISTENCE, BUT GENERATING VECTORS OVER IMAGES MEANS A
+                %SINGLE INPUT TO THE WEIGHTING FUNCTION
+                [weights]=arrayfun(@(row) weight_func(H0_both(row,:), params), 1:size(H0_both,1))';
+                %call the function that generates the vector
+                [I_H0] = one_dim_gaussian_bump(H0, grid_values1_H0, sig, weights);  
                 data_vecs{p,t}=I_H0;
                 end
             end   
 end
 
-function [ data_vecs ] = soft_bound_PVs( b_p_data, max_b_p_H0, bump_func_params, res,sig)
+function [ data_vecs ] = soft_bound_PVs(  b_p_data, max_b_p_H0, weight_func, params, res,sig)
 %soft_bound_PIs generates the PVs for a set of point clouds with the
 %b_p_data (H0 only). Soft refers to the fact that we add three times the variance
 % to the maximal values to determine our boundaries.
@@ -257,11 +193,9 @@ function [ data_vecs ] = soft_bound_PVs( b_p_data, max_b_p_H0, bump_func_params,
 %                  birth time across all point clouds for H0
 %                  This information is used to create the boundaries for 
 %                  the persistence vectors.
-%                  -bump_func_params: give the values for the
-%                  bump function parameters which determine how fast the
-%                  function leaves zero and how quickly it levels off at
-%                  1. [M1,M2] where M1 controls the speed of leaving zero
-%                  and M2 controls the speed of leveling off.
+%                  -weight_func: the weighting function the user specified
+%                  -params: the needed paramteres for the user specified
+%                  weight function
 %                  -res: the resolution (number of pixels). we create
 %                  square images with rectangular pixels.
 %                  -sig: the variance of the gaussians. 
@@ -272,24 +206,24 @@ function [ data_vecs ] = soft_bound_PVs( b_p_data, max_b_p_H0, bump_func_params,
 %allocate space
 data_vecs=cell(m,n);  
 H0_max_p=max_b_p_H0(1,2);    
-%select 100 sample values of the bump function to linearly interpolate
-%between to get scaling factors.
-X_H0=linspace(0,H0_max_p,100);    
-%compute the bump function values at the test points. 
-[lin_interp_vals_H0] = approx_bump(X_H0,0,H0_max_p,[0,0]);       
 %set up discritization for H0
 persistence_stepsize_H0=(H0_max_p+3*sig)/res; %the y-height of a pixel
 grid_values1_H0=0:persistence_stepsize_H0:(H0_max_p+3*sig); %must be increasing from zero to max_persistence
             for p=1:m
                 for t=1:n
-                H0=b_p_data{p,t}; %H0 interval data
-                H0=H0(:,2); %we only need the persistence values
-                [I_H0] = one_dim_gaussian_bump(H0, grid_values1_H0,sig,lin_interp_vals_H0);  
+                H0_both=b_p_data{p,t}; %H0 interval data
+                H0=H0_both(:,2); %we only need the persistence values
+                %COULD CHANGE TO BE IN TERMS OF DEATH INSTEAD OF
+                %PERSISTENCE, BUT GENERATING VECTORS OVER IMAGES MEANS A
+                %SINGLE INPUT TO THE WEIGHTING FUNCTION
+                [weights]=arrayfun(@(row) weight_func(H0_both(row,:), params), 1:size(H0_both,1))';
+                %call the function that makes the vector
+                [I_H0] = one_dim_gaussian_bump(H0, grid_values1_H0,sig,weights);  
                 data_vecs{p,t}=I_H0;
                 end
             end
 end
-function [integral_vec]=one_dim_gaussian_bump(BPPairs, values, sig,lin_interp_vals)
+function [integral_vec]=one_dim_gaussian_bump(BPPairs, values, sig,weights)
 %grid Gaussian takes in a persistence diagram and generates the gaussian
 %gridded image of that persistence diagram. We set the parameters of the
 %bump function to be 1,1.
@@ -306,10 +240,8 @@ function [integral_vec]=one_dim_gaussian_bump(BPPairs, values, sig,lin_interp_va
 %       Outputs: -Integral_vec: The vector generated by summing over 1D
 %               gaussians centered at each persistence in the H0
 %               information
-LIV=lin_interp_vals;
 for i=1:size(BPPairs,1)
-    b=find(BPPairs(i,:)<=LIV(2:end,1) & BPPairs(i,:)>=LIV(1:end-1,1));
-    M=((LIV(b+1,2)-LIV(b,2))/(LIV(b+1,1)-LIV(b,1)))*(BPPairs(i,:)-LIV(b,1))+LIV(b,2); 
+    M=weights(i);
     AA=(M)*normcdf(values, BPPairs(i,:), sig);
     ZZ(:,i)=(AA(2:end)-AA(1:end-1));
 end

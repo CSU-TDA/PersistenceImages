@@ -1,4 +1,4 @@
-function [ PIs ] = make_PIs(interval_data, res, sig, bump_func_params, type)
+function [ PIs ] = make_PIs(interval_data, res, sig, weight_func,params,type)
 %make_PIs generates the set of persistence images for the PH interval data
 %stored in the cell array titled interval_data.
 % INPUTS:   -interval_data: is a cell array containing the interval data
@@ -12,10 +12,13 @@ function [ PIs ] = make_PIs(interval_data, res, sig, bump_func_params, type)
 %            -res: the desired resolution of the image
 %            -sig: is the desired variance of the Gaussians used to compute
 %            the images
-%            bump_func_params: a 1x2 matrix containing the values of the
-%            bump function parameters [M1,M2]. M1 controls how quickly the
-%            wieghting function leaves 0 and the M2 controls how quickly
-%            the function levels off to 1.
+%            -weight_function: the name of the weighting function to be
+%            called to generate the weightings for the bars. ex
+%            @linear_ramp. The weight function needs to be a function only
+%            of persistence. Needs to be able to accept the
+%            birth_persistence coordinates as an input.
+%            -params: the set of parameter values needing to be defined fpr
+%            the weighting function. 
 %            -type: refers to the declaration of a soft' or 'hard' with
 %            respect to the boundaries. type=1 produces hard bounds, type=2
 %            produces soft boundaries on the images.
@@ -26,46 +29,57 @@ function [ PIs ] = make_PIs(interval_data, res, sig, bump_func_params, type)
 %are viable.
 if size(problems,1)>0
     error('Error: Negative Persistences Present')
+  
 elseif size(problems,1)==0;
     'All positive Persistence, continuing'
 end
 
-if nargin>5
+if nargin>6
     error('Error: too many input arguments')
+elseif nargin==6
+    res=res;
+    sig=sig;
+    weight_func=weight_func;
+    params=params;
+    type=type;
 elseif nargin==5
     res=res;
     sig=sig;
-    bump_func_params=bump_func_params;
-    type=type;
+    weight_func=weight_func;
+    params=params;
+    type=1;
 elseif nargin==4
-    res=res;
-    sig=sig;
-    bump_func_params=bump_func_params;
-    type=1; %default boundary setting is hard.
+    error('Error: Incomplete weight function and parameter pair');
 elseif nargin==3 
     res=res;
     sig=sig;
-    bump_func_params=[0,0]; %default setting is a linear bump function.
+    weight_func=@linear_ramp; %default setting is a linear weighting function
+    params=[0, max(max(max_b_p_Hk(:,2)))]; %default setting 0 at 0 and 1 at 
+    %the maximum persistence.
     type=1; %the default boundary setting is hard
 elseif nargin==2
     res=res;
-    sig=.5*(max(max(max_b_p_HK(:,2)))/res);%the default setting for the 
+    sig=.5*(max(max(max_b_p_Hk(:,2)))/res);%the default setting for the 
     %variance of the gaussians is equal to one half the height of a pixel.
-    bump_func_params=[0,0]; %default setting is a linear bump function
+    weight_func=@linear_ramp; %default setting is a linear weighting function
+    params=[0, max(max(max_b_p_Hk(:,2)))]; %default setting 0 at 0 and 1 at 
+    %the maximum persistence.
     type=1; %the default boundary setting is hard.
 elseif nargin==1
     res=25; %default resolution is equal to 25 pixels.
-    sig=.5*(max(max(max_b_p_HK(:,2)))/res);%the default setting for the 
+    sig=.5*(max(max(max_b_p_Hk(:,2)))/res);%the default setting for the 
     %variance of the gaussians is equal to one half the height of a pixel.
-    bump_func_params=[0,0]; %default setting is a linear bump function
+    weight_func=@linear_ramp; %default setting is a linear weighting function
+    params=[0, max(max(max_b_p_Hk(:,2)))]; %default setting 0 at 0 and 1 at 
+    %the maximum persistence.
     type=1; %the default boundary setting is hard.
 end
     
     
 if type==1       
-    [ data_images ] = hard_bound_PIs( b_p_data, max_b_p_Hk, bump_func_params, res,sig);
+    [ data_images ] = hard_bound_PIs( b_p_data, max_b_p_Hk, weight_func, params, res,sig);
 elseif type==2
-    [ data_images ] = soft_bound_PIs( b_p_data, max_b_p_Hk, bump_func_params, res,sig);
+    [ data_images ] = soft_bound_PIs( b_p_data, max_b_p_Hk, weight_func, params, res,sig);
 end
     PIs=data_images;
     
@@ -73,7 +87,7 @@ function [ b_p_data, max_b_p_Hk, problems] = birth_persistence_coordinates(inter
 %birth_persitence_coordinates takes in the interval data as output by the
 %duke TDA code (birth-death coordinates) and changes them into
 %birth-persistence coordinates.
-%INPUTS:      -interval_data: is a cell array containing the interval data
+%INPUTS:     -interval_data: is a cell array containing the interval data
 %            for all of the point clouds in consideration. Each sheet in
 %            the cell array corresponds to a different Betti dimension.
 %            Each interval set is assumed to be an nX2 matrix with the
@@ -109,7 +123,7 @@ for i=1:n
         birth_persistence{j,i,k}=[B(:,1) C];
         %birth-persistence coordinates for Hk
 %        end
-        D=find(C<=0);
+        D=find(C<0);
         if length(D)>0
             problems=[problems; j,i,k];
         elseif length(D)==0
@@ -129,80 +143,7 @@ max_b_p_Hk=[Hk_max_birth, Hk_max_persistence];
 b_p_data=birth_persistence;
 
 end
-function [lin_interp_vals] = approx_bump(X,min,max,varargin)
-%approx_bump takes in a vector of values and approximates the bump function
-%at these values. This can then be used to generate linear approximation at
-%a novel point
-lin_interp_vals=zeros(length(X),2);
-% Check for threshold parameter
-if size(varargin) == 0
-    M = [1,1];
-else
-    M = varargin{1};
-end
-
-for i=1:length(X)
-    lin_interp_vals(i,1)=X(i);
-    lin_interp_vals(i,2)=bump(X(i), min, max, M);
-end
-    
-end
-function [b] = bump(radius, minradius, maxradius, varargin)
-% bump2 determines the approximate value at radius of a smooth, 
-% rotationally-invariant bump function h(x) with the properties:
-% 
-%   1.) h(z) = 1 if |z| <= minradius
-%   2.) 0 < h(z) < 1 if minradius < |z| < maxradius 
-%   3.) h(z) = 0 if maxradius < |z|
-
-if radius > maxradius
-   b = 0; 
-   return;
-end
-
-% Check for threshold parameter
-if size(varargin) == 0
-    M = [1,1];
-else
-    M = varargin{1};
-end
-
-% Parameter to control error approximation.
-resolution = 10000;
-
-x = linspace(minradius, maxradius, resolution);
-g = zeros(1,resolution);
-
-for i=1:resolution
-    g(i) = f(x(i)-minradius, M(1))*f(maxradius-x(i), M(2));
-end
-
-b = h(x,g,radius);
-
-% ================
-% Local functions
-% ================
-% Smoothly varying, monotonic function whose range is [0,1).
-function y = f(x,M)
-    if x > 0
-        y = exp(-M/x);
-    else
-        y = 0;
-    end
-end
-
-% Integral function h(x) = int_{-inf}^{radius} g(x) / int_{-inf}^{inf} g(x)
-function z = h(x,g,radius)
-    [~,idx] = min(abs(x-radius));
-    if idx < 2
-        z = 0;
-    else
-        z = trapz(x(1:idx),g(1:idx))/trapz(x,g);
-    end
-end
-
-end
-function [ data_images ] = hard_bound_PIs( b_p_data, max_b_p_Hk, bump_func_params, res,sig)
+function [ data_images ] = hard_bound_PIs( b_p_data, max_b_p_Hk, weight_func, params, res,sig)
 %hard_bound_PIs generates the PIs for a set of point clouds with the
 %b_p_data. Hard refers to the fact that we cut the boundaries off hard at
 %the maximum values. 
@@ -213,11 +154,9 @@ function [ data_images ] = hard_bound_PIs( b_p_data, max_b_p_Hk, bump_func_param
 %                  birth time across all point clouds for each Hk. 
 %                  This information is used to create the boundaries for 
 %                  the persistence images.
-%                  -bump_func_params: give the values for the
-%                  bump function parameters which determine how fast the
-%                  function leaves zero and how quickly it levels off at
-%                  1. [M1,M2] where M1 controls the speed of leaving zero
-%                  and M2 controls the speed of leveling off.
+%                  -weight_func: the weighting function the user specified
+%                  -params: the needed paramteres for the user specified
+%                  weight function
 %                  -res: the resolution (number of pixels). we create
 %                  square images with rectangular pixels.
 %                  -sig: the variance of the gaussians. 
@@ -232,12 +171,6 @@ data_images=cell(m,n,o);
 for k=1:o  
 Hk_max_b=max_b_p_Hk(k,1);
 Hk_max_p=max_b_p_Hk(k,2);    
-%select 100 sample values of the bump function to linearly interpolate
-%between to get scaling factors. For now, no matter what the range we only
-%compute the value at 100 points.
-X_Hk=linspace(0,Hk_max_p,100);    
-%compute the bump function values at the test points. 
-[lin_interp_vals_Hk] = approx_bump(X_Hk,0,Hk_max_p,[0,0]);    
 sigma=[sig,sig]; %duplicate the variance for the PIs      
 %set up gridding for Hk
 birth_stepsize_Hk=Hk_max_b/res; %the x-width of a pixel
@@ -246,15 +179,18 @@ grid_values1_Hk=0:birth_stepsize_Hk:Hk_max_b; %must be increasing from zero to m
 grid_values2_Hk=Hk_max_p:-persistence_stepsize_Hk:0; %must be decreasing from max_dist to zero
             for p=1:m
                 for t=1:n
-                Hk=b_p_data{p,t,k}; %Hk interval data
-                %call the function that generates the image
-                [I_Hk] = grid_gaussian_bump(Hk, grid_values1_Hk, grid_values2_Hk, sigma,lin_interp_vals_Hk);  
+                Hk=b_p_data{p,t,k}; %Hk birth persistence data
+                %CHANGES TO THE WIEGHT FUNCTION INPUTS HAPPEN IN THE ROW
+                %BELOW
+                [weights]=arrayfun(@(row) weight_func(Hk(row,:), params), 1:size(Hk,1))';
+                %call the function that makes the image
+                [I_Hk] = grid_gaussian_bump(Hk, grid_values1_Hk, grid_values2_Hk, sigma,weights);  
                 data_images{p,t,k}=I_Hk;
                 end
             end   
 end
 end
-function [ data_images ] = soft_bound_PIs( b_p_data, max_b_p_Hk, bump_func_params, res,sig)
+function [ data_images ] = soft_bound_PIs( b_p_data, max_b_p_Hk, weight_func, params, res,sig)
 %soft_bound_PIs generates the PIs for a set of point clouds with the
 %b_p_data. Soft refers to the fact that we add three times the variance
 % to the maximal values to determine our boundaries.
@@ -265,11 +201,9 @@ function [ data_images ] = soft_bound_PIs( b_p_data, max_b_p_Hk, bump_func_param
 %                  birth time across all point clouds for each Hk. 
 %                  This information is used to create the boundaries for 
 %                  the persistence images.
-%                  -bump_func_params: give the values for the
-%                  bump function parameters which determine how fast the
-%                  function leaves zero and how quickly it levels off at
-%                  1. [M1,M2] where M1 controls the speed of leaving zero
-%                  and M2 controls the speed of leveling off.
+%                  -weight_func: the weighting function the user specified
+%                  -params: the needed paramteres for the user specified
+%                  weight function
 %                  -res: the resolution (number of pixels). we create
 %                  square images with rectangular pixels.
 %                  -sig: the variance of the gaussians. 
@@ -286,11 +220,6 @@ data_images=cell(m,n,o);
 for k=1:o    
 Hk_max_b=max_b_p_Hk(k,1);
 Hk_max_p=max_b_p_Hk(k,2);    
-%select 100 sample values of the bump function to linearly interpolate
-%between to get scaling factors.
-X_Hk=linspace(0,Hk_max_p,100);    
-%compute the bump function values at the test points. 
-[lin_interp_vals_Hk] = approx_bump(X_Hk,0,Hk_max_p,[0,0]);    
 sigma=[sig,sig]; %duplicate the variance for the PIs      
 %set up gridding for Hk
 birth_stepsize_Hk=(Hk_max_b+3*sig)/res; %the x-width of a pixel
@@ -299,14 +228,18 @@ grid_values1_Hk=0:birth_stepsize_Hk:(Hk_max_b+3*sig); %must be increasing from z
 grid_values2_Hk=(Hk_max_p+3*sig):-persistence_stepsize_Hk:0; %must be decreasing from max_dist to zero
             for p=1:m
                 for t=1:n
-                Hk=b_p_data{p,t,k}; %Hk interval data
-                [I_Hk] = grid_gaussian_bump(Hk, grid_values1_Hk, grid_values2_Hk, sigma,lin_interp_vals_Hk);  
+                Hk=b_p_data{p,t,k}; %birth-persistence data
+                %CHANGES TO THE WIEGHT FUNCTION INPUTS HAPPEN IN THE ROW
+                %BELOW
+                [weights]=arrayfun(@(row) weight_func(Hk(row,:), params), 1:size(Hk,1))';
+                %call the funciton that makes the image
+                [I_Hk] = grid_gaussian_bump(Hk, grid_values1_Hk, grid_values2_Hk, sigma,weights);  
                 data_images{p,t,k}=I_Hk;
                 end
             end
 end
 end
-function [integral_image]=grid_gaussian_bump(Hk, grid_values1_Hk, grid_values2_Hk, sigma,lin_interp_vals_Hk)
+function [integral_image]=grid_gaussian_bump(Hk, grid_values1_Hk, grid_values2_Hk, sigma,weights)
 %grid_gaussian_bump takes in birth-persistence data for a single point cloud, 
 %pixel boundary values,the gaussian variance, and values of the bump
 %function to linearly interpolate between to get the weighting values for
@@ -319,11 +252,9 @@ function [integral_image]=grid_gaussian_bump(Hk, grid_values1_Hk, grid_values2_H
 %               decreasing
 %               -sigma is a 1x2 vector with the x and y standard
 %               deviations.
-%               -Lin_interp_vals is 2x100 matrix containing values of
-%               the bump function at a range of values up to the longest
-%               persistence. Will be used to identify the scaling value
-%               based on using linear interpolation between the two closest
-%               persistences.
+%               -weights: vector containing the weighting value for each
+%               interval as determined by the user specified weighting
+%               function and parameters.
 %Outputs:       -Integral image: is the image computed by discreting based
 %               on the values contained in grid_values and summing over all
 %               thedifferent gaussians centered at each point in the
@@ -333,14 +264,8 @@ max_bar_length=grid_values2_Hk(1);
 [X,Y]=meshgrid(grid_values1_Hk,grid_values2_Hk);
 XX=reshape(X,[],1);
 YY=reshape(Y,[],1);
-LIV=lin_interp_vals_Hk;
 for l=1:size(Hk,1)
-    b=find(Hk(l,2)<=LIV(2:end,1) & Hk(l,2)>=LIV(1:end-1,1));
-    %find the closest bump function values to the persistence of the point
-    %we are working with. Find an upper and lower bound.
-    M=((LIV(b+1,2)-LIV(b,2))/(LIV(b+1,1)-LIV(b,1)))*(Hk(l,2)-LIV(b,1))+LIV(b,2);
-    %linearly interpolate between the upper and lower persistence bound
-    %weights to get the weighting value for the Gaussian.
+    M=weights(l);
     AA=(M)*mvncdf([XX YY], Hk(l,:), sigma);
     AA=reshape(AA,[],length(grid_values1_Hk));
     ZZ(:,:,l)=(-AA(2:end,2:end)-AA(1:end-1,1:end-1)+AA(2:end, 1:end-1)+AA(1:end-1,2:end));

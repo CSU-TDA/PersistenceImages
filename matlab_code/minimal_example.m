@@ -7,10 +7,9 @@ load('circleAndTorusIntervals.mat')
 % circleAndTorusIntervals_H0 is a 1x2 cell containing the H0 intervals from
 % points sampled from a noisy circle and torus.
 
-bump_func_params=[0,0];
 sig=0.0001;
 res=50;
-[H1_PIs] = make_PIs(circleAndTorusIntervals_H1, res, sig, bump_func_params, 1);
+[H1_PIs] = make_PIs(circleAndTorusIntervals_H1, res, sig);
 figure, imagesc(H1_PIs{1})
 title('Persistant Image for H1 diagram of points sampled from a noisy circle')
 figure, imagesc(H1_PIs{2})
@@ -31,5 +30,3 @@ title('Persistant Vector for H0 diagram of points sampled from a noisy torus')
 % conver a persistent image in matrix format into a vector by concatenating
 % columns. This is accomplished by the following command.
 H1_vecs = vecs_from_PIs(H1_PIs);
-
-
