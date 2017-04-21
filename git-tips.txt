@@ -1,0 +1,29 @@
+Before any of the following will work, you probably have to first download git (available at https://git-scm.com) on your local machine.
+
+Open the terminal on your computer. To create a local version on your computer of the folder PersistenceImages (with the latest version of our GitHub repository code), change directory to where you want this folder to go. Enter the command
+	https://github.com/CSU-TDA/PersistenceImages.git
+Change directories to this folder.
+	cd PersistenceImages
+To see the log of changes, type
+	git log
+Press "Enter" to see more changes, and press "q" to exit.
+
+You only need to clone the folder PersistenceImages once. In the future, just change directories to the folder PersistenceImages on your computer and type
+	git pull
+to pull the latest code from the online repository. Remember to run the command "git pull" every time before you make edits (to ensure that you are only editing the latest version).
+
+Modify any files you like in the folder PersistentImages. Type
+	git status
+to see which files you have changed. If you have added any new files, then you must type
+	git add [filename]
+to tell git to start paying attention to this file. If you have removed any files and no longer want git to keep track of them, type
+	git rm [filename]
+Once you are ready to commit your changes to the online repository, first type
+	git pull
+to make sure nobody else has made changes in the meantime. This will not overwrite the local changes you just made -- it may ask you to resolve conflicts if others have been editing the online repository in the meantime. Type
+	git commit -m "enter message describing commit here"
+to commit your changes to your local repository. Describe the changes you made inside the quotes above. This commits your changes only to your local repository on your computer. Type
+	git push
+to push these changes to the online repository. You can now go to the website
+https://github.com/CSU-TDA/PersistenceImages.git
+to double-check that your changes have been made successfully.
