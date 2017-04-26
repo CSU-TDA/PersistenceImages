@@ -1,7 +1,7 @@
 Before any of the following will work, you probably have to first download git (available at https://git-scm.com) on your local machine.
 
 Open the terminal on your computer. To create a local version on your computer of the folder PersistenceImages (with the latest version of our GitHub repository code), change directory to where you want this folder to go. Enter the command
-	https://github.com/CSU-TDA/PersistenceImages.git
+	git clone https://github.com/CSU-TDA/PersistenceImages.git
 Change directories to this folder.
 	cd PersistenceImages
 To see the log of changes, type
