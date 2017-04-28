@@ -269,6 +269,7 @@ for l=1:size(Hk,1)
     AA=(M)*mvncdf([XX YY], Hk(l,:), sigma);
     AA=reshape(AA,[],length(grid_values1_Hk));
     ZZ(:,:,l)=(-AA(2:end,2:end)-AA(1:end-1,1:end-1)+AA(2:end, 1:end-1)+AA(1:end-1,2:end));
+    % The above line is implementing the procedure explained in https://en.wikipedia.org/wiki/Summed_area_table
 end
  integral_image=sum(ZZ,3);
 end
